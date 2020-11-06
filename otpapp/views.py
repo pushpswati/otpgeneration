@@ -1,11 +1,21 @@
+from django.http import Http404
+
+from jwtotp import settings
+from . import models
 from .models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .serializer import UserSerializer,UserProfileSerializer
+from .serializer import UserSerializer,UserProfileSerializer,UserFileViewSerializer
 import random
 import json
 import jwt
+import os
+import sys
+import uuid
+from django.core.exceptions import ObjectDoesNotExist
+from rest_framework.parsers import FileUploadParser, MultiPartParser
+from . import jwtToken
 
 # Create your views here.
 class Userview(APIView):
@@ -64,13 +74,20 @@ class Otpverify(APIView):
         userdbobj=User.objects.get(contact=contact)
         availotp=userdbobj.otp
         if otp==availotp:
-            response={"success":True}
+            jwtvar= jwtToken.Jwt.jwtsignature(contact)
+            userdbobj.token=jwtvar
+            userdbobj.save()
+            response={"success":True,"token":jwtvar}
             return Response(response,status.HTTP_200_OK)
         else:
             response={"success":False}
             return Response(response,status=status.HTTP_401_UNAUTHORIZED)
 
-
+# def jwtsignature(self,contact):
+#
+#    encoded_jwt = jwt.encode({'contact': contact}, 'secret', algorithm='HS256')
+#       response={'token':encoded_jwt}
+#       return response
     
 class UserProfileView(APIView):
     """
@@ -101,4 +118,48 @@ class UserProfileView(APIView):
         profile.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
-    
+class UserFileView(APIView):
+    """
+    Upload flle upload view for FileUpload model
+    """
+    parser_classes = (MultiPartParser,)
+    def post(self, request, format=None):
+        """
+
+        :param request:
+        :param format:
+        :return:
+        """
+        #try:
+        file_name = request.data["file_name"]
+
+        # token = request.META['HTTP_X_HEADER_TOKEN']
+        # payload = jwtsignature().authenticate_credentials(token)
+        # print("payload", payload)
+        #if payload:
+        #userobj=User.objects.get(contact=contact)
+        data = request.data
+        print(data,"kya data")
+        contact = int(data["contact"])
+        print(contact,"contact")
+        user = models.User.objects.get(contact=contact)
+        print(user,"user...")
+        doc_obj=models.Media.objects.create(user=user,
+                                                   file_name=file_name)
+        doc_obj.save()
+        file_url=str(doc_obj.file_name)
+
+        RESPONSE = {'success': True,
+            'response': {'file_name': file_url}}
+        return Response(json.dumps(RESPONSE), status=status.HTTP_200_OK)
+
+
+
+            #return Response(BEDRESPONSE, status=status.HTTP_401_UNAUTHORIZED)
+
+        # except Exception as e:
+        #     exc_type, exc_obj, exc_tb = sys.exc_info()
+        #     print(sys.exc_info())
+        #     BEDRESPONS = {'success': False,
+        #     'response': str(sys.exc_info())}
+        #     return Response(json.dumps(BEDRESPONS), status=status.HTTP_400_BAD_REQUEST)
