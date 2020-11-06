@@ -74,7 +74,7 @@ class Otpverify(APIView):
         userdbobj=User.objects.get(contact=contact)
         availotp=userdbobj.otp
         if otp==availotp:
-            jwtvar= jwtToken.Jwt.jwtsignature(contact)
+            jwtvar= jwtToken.Jwt().jwtsignature(contact)
             userdbobj.token=jwtvar
             userdbobj.save()
             response={"success":True,"token":jwtvar}

@@ -1,7 +1,8 @@
 
+import jwt
 
 
-class Jwt():
+class Jwt:
 
     def jwtsignature(self ,contact):
 
