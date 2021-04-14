@@ -21,10 +21,11 @@ class Otpverify(serializers.ModelSerializer):
         model = User
         fields = ["contact","token"]
 
-class UserFileViewSerializer(serializers.ModelSerializer):
+class JobsSerializer(serializers.ModelSerializer):
     """
     CustomerSerializer class for Customer model
     """
     class Meta:
-        model=models.User
-        fields = ('id','file_name','file_type','created')
+        model=models.Jobs
+        fields = ('id','file_name','quotation','description','job_name','job_type',
+                  'paper_material','quantity','size','created')

@@ -6,16 +6,19 @@ from .models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .serializer import UserSerializer,UserProfileSerializer,UserFileViewSerializer
+from .serializer import UserSerializer,UserProfileSerializer,JobsSerializer
 import random
 import json
 import jwt
 import os
 import sys
 import uuid
+from django.utils import timezone
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from rest_framework.parsers import FileUploadParser, MultiPartParser
-from . import jwtToken
+from rest_framework.parsers import FileUploadParser, MultiPartParser,FormParser
+# from . import jwtToken
+from otpapp.jwtauthuser import JSONWebTokenAuthentication as jwta
 
 # Create your views here.
 class Userview(APIView):
@@ -74,10 +77,14 @@ class Otpverify(APIView):
         userdbobj=User.objects.get(contact=contact)
         availotp=userdbobj.otp
         if otp==availotp:
-            jwtvar= jwtToken.Jwt().jwtsignature(contact)
+            now=timezone.now()
+            timed=24*60*60*now.day+now.hour*60*60+now.minute*60+now.second
+            age=str(timed+settings.TOKEN_EXPIRE_TIME)
+            jwtvar= jwta(userdbobj).get_user_jwt(age)
+            print(jwtvar)
             userdbobj.token=jwtvar
             userdbobj.save()
-            response={"success":True,"token":jwtvar}
+            response={"success":True,"token":jwtvar,'id':userdbobj.id}
             return Response(response,status.HTTP_200_OK)
         else:
             response={"success":False}
@@ -101,6 +108,12 @@ class UserProfileView(APIView):
 
     
     def get(self, request, pk, format=None):
+        print(request.META)
+        token=request.META['HTTP_AUTHORIZATION']
+        payload=jwta().authenticate_credentials(token)
+        print("payload",payload)
+        if payload:
+            pass
         profile = self.get_object(pk)
         serializer = UserProfileSerializer(profile)
         return Response(serializer.data)
@@ -122,7 +135,7 @@ class UserFileView(APIView):
     """
     Upload flle upload view for FileUpload model
     """
-    parser_classes = (MultiPartParser,)
+    parser_classes = (MultiPartParser, FormParser,FileUploadParser,)
     def post(self, request, format=None):
         """
 
@@ -131,27 +144,42 @@ class UserFileView(APIView):
         :return:
         """
         #try:
-        file_name = request.data["file_name"]
+        
+        token=request.META['HTTP_AUTHORIZATION']
+        payload=jwta().authenticate_credentials(token)
+        
+        print("payload ----",payload)
+        if payload:
+            data = request.data
+            print(data)
+            file_name = data["file_name"]
+            
+            contact = int(payload["contact"])
+#             job_name=data["job_name"]
+            size=data["size"]
+            job_type=data["job_type"]
+            paper_material=data["paper_material"]
+            quantity=data["quantity"]
+            description=data["description"]
+            user = models.User.objects.get(contact=contact)
+            print(user,"--------------------")
+            doc_obj=models.Jobs.objects.create(user=user,
+                                               file_name=file_name,
+                                               description=description,
+                                               size=size,
+                                               job_type=job_type,
+                                               quantity=quantity,
+                                               paper_material=paper_material,
+                                               
+                                              )
+            doc_obj.save()
+            file_url=str(doc_obj.file_name)
 
-        # token = request.META['HTTP_X_HEADER_TOKEN']
-        # payload = jwtsignature().authenticate_credentials(token)
-        # print("payload", payload)
-        #if payload:
-        #userobj=User.objects.get(contact=contact)
-        data = request.data
-        print(data,"kya data")
-        contact = int(data["contact"])
-        print(contact,"contact")
-        user = models.User.objects.get(contact=contact)
-        print(user,"user...")
-        doc_obj=models.Media.objects.create(user=user,
-                                                   file_name=file_name)
-        doc_obj.save()
-        file_url=str(doc_obj.file_name)
-
-        RESPONSE = {'success': True,
-            'response': {'file_name': file_url}}
-        return Response(json.dumps(RESPONSE), status=status.HTTP_200_OK)
+            RESPONSE = {'success': True,
+                'response': {'file_name': file_url}}
+            return Response(json.dumps(RESPONSE), status=status.HTTP_200_OK)
+        else:
+            return Response( status=status.HTTP_401_UNAUTHORIZED)
 
 
 
@@ -163,3 +191,25 @@ class UserFileView(APIView):
         #     BEDRESPONS = {'success': False,
         #     'response': str(sys.exc_info())}
         #     return Response(json.dumps(BEDRESPONS), status=status.HTTP_400_BAD_REQUEST)
+
+        
+class JobDetailsView(APIView):
+
+    def get(self, request, format=None):
+        token=request.META['HTTP_AUTHORIZATION']
+        payload=jwta().authenticate_credentials(token)
+        if payload:
+            user = models.User.objects.get(contact=payload["contact"])
+            jobs=models.Jobs.objects.filter(user=user)
+            serializer = JobsSerializer(jobs, many=True)
+            data=[]
+            for el in serializer.data:
+                if el['quotation']:
+                    el['quotation']=settings.BASE_URL+el['quotation']
+                    print(el['quotation'])
+                data.append(el)
+                    
+            
+            return Response(data)
+        else:
+            return Response( status=status.HTTP_400_BAD_REQUEST)
